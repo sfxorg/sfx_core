@@ -1,4 +1,4 @@
-from sfx_core_2d.geometry.sem_nodes import get_sem_diff_matrix_2d
+from geometry.sem_nodes import get_sem_diff_matrix_2d
 
 def test_sem_matrix():
     nodes, D = get_sem_diff_matrix_2d(4)

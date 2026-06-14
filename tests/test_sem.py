@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from sfx_core_2d.operators.sem_ops import run_pure_sem_2d
+from operators.sem_ops import run_pure_sem_2d
 
 def test_sem_runs():
     u = jnp.ones((5, 5))
