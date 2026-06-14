@@ -55,7 +55,7 @@ def plot_sfx_dashboard(L, X_fft, u_init, u_exact, u_fft, X_sem, u_sem, u_exact_s
     ax7.set_yscale('log')
     ax7.set_ylim(1e-15, 1e1)
     ax7.set_title('H. Accuracy Comparison', fontweight='bold')
-    ax7.legend(loc='upper right', fontsize=7)
+    ax7.legend(loc='lower right', fontsize=7)
     
     plt.savefig("sfx_dashboard.png", dpi=150)
     plt.close('all')
