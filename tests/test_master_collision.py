@@ -118,5 +118,8 @@ for c in [0.2, 0.4, 0.6, 0.8, 1.0]:
     u_t = ai_surrogate_model(u_exact, cutoff=c)
     print(f"  Cutoff {c:.1f} | Error: {jnp.max(jnp.abs(u_t - u_exact)):.2e}")
 
-plot_sfx_dashboard(L, X_fft, u_exact, u_fft, X_sem, u_sem, u_exact_sem, u_hyb_fft, u_ai, u_fv, err_fft, err_sem, err_hyb, err_ai, err_fv, t_fft, t_sem, t_hyb, t_fv)
+#plot_sfx_dashboard(L, X_fft, u_exact, u_fft, X_sem, u_sem, u_exact_sem, u_hyb_f#ft, u_ai, u_fv, err_fft, err_sem, err_hyb, err_ai, err_fv, t_fft, t_sem, t_hyb, t_fv)
+
+plot_sfx_dashboard(L, X_fft, u_init, u_exact, u_fft, X_sem, u_sem, u_exact_sem, u_hyb_fft, u_ai, u_fv, err_fft, err_sem, err_hyb, err_ai, err_fv, t_fft, t_sem, t_hyb, t_fv)
+
 sys.exit(0)
