@@ -8,6 +8,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+# CRITICAL: Precision and Stability
 jax.config.update("jax_enable_x64", True)
 
 from geometry.sem_nodes import get_sem_diff_matrix_2d
@@ -25,6 +26,13 @@ def ai_surrogate_model(u_true, cutoff=0.5):
     mask = jnp.exp(-(kx**2 + ky**2) / cutoff**2)
     return jnp.fft.ifft2(u_hat * mask).real
 
+@jax.jit
+def run_fv_proxy(u, cx, cy, dt, dx, dy):
+    flux_x, flux_y = cx * u, cy * u
+    d_flux_dx = (flux_x - jnp.roll(flux_x, 1, axis=0)) / dx
+    d_flux_dy = (flux_y - jnp.roll(flux_y, 1, axis=1)) / dy
+    return u - dt * (d_flux_dx + d_flux_dy)
+
 def rk4_step(rhs_func, u, dt):
     k1 = rhs_func(u)
     k2 = rhs_func(u + 0.5 * dt * k1)
@@ -32,12 +40,11 @@ def rk4_step(rhs_func, u, dt):
     k4 = rhs_func(u + dt * k3)
     return u + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
 
-# Config
+# Global Config
 L, cx, cy, dt = 10.0, 1.0, 1.0, 0.05
 total_time = 12.5
 steps = int(total_time / dt)
-N_fft = 64
-dx = L / N_fft
+N_fft, dx = 64, L/64
 
 # Grids
 X_fft, Y_fft = jnp.meshgrid(jnp.linspace(0, L, N_fft, endpoint=False), jnp.linspace(0, L, N_fft, endpoint=False))
@@ -45,7 +52,7 @@ ik_x = 1j * 2 * jnp.pi * jnp.fft.fftfreq(N_fft, d=L/N_fft)[:, None]
 ik_y = 1j * 2 * jnp.pi * jnp.fft.fftfreq(N_fft, d=L/N_fft)[None, :]
 u_init = jnp.exp(-((X_fft - 5)**2 + (Y_fft - 5)**2) / 1.5)
 
-# SEM/Hybrid Setup
+# SEM Setup
 E_sem, P_sem = 32, 4
 X_sem, Y_sem = generate_tiled_sem_grid_2d(E_sem, P_sem, L)
 _, D_ref = get_sem_diff_matrix_2d(P_sem)
@@ -56,7 +63,7 @@ P_rib = 4
 _, D_rib = get_sem_diff_matrix_2d(P_rib)
 jac_rib = sem_jacobian(16, L)
 
-# Simulations
+# --- SIMULATIONS ---
 t0 = time.time()
 @jax.jit
 def step_fft(u, _): return rk4_step(lambda u: -(cx * jnp.fft.ifft2(jnp.fft.fft2(u) * ik_x).real + cy * jnp.fft.ifft2(jnp.fft.fft2(u) * ik_y).real), u, dt), None
@@ -78,33 +85,38 @@ t_hyb = time.time() - t0
 
 t0 = time.time()
 @jax.jit
-def step_fv(u, _): return u - dt * (cx * jnp.gradient(u, axis=0) + cy * jnp.gradient(u, axis=1)) / dx, None
+def step_fv(u, _): return run_fv_proxy(u, cx, cy, dt, dx, dx), None
 u_fv, _ = jax.lax.scan(step_fv, jnp.copy(u_init), None, length=steps)
 t_fv = time.time() - t0
 
 # Post-processing
-X_s, Y_s = (X_fft - cx * total_time) % L, (Y_fft - cy * total_time) % L
-u_exact = jnp.exp(-((X_s - 5)**2 + (Y_s - 5)**2) / 1.5)
+u_exact = jnp.exp(-(((X_fft - cx * total_time) % L - 5)**2 + ((Y_fft - cy * total_time) % L - 5)**2) / 1.5)
 u_exact_sem = jnp.exp(-(((X_sem - cx * total_time) % L - 5)**2 + ((Y_sem - cy * total_time) % L - 5)**2) / 1.5)
-
-# AI SENSITIVITY ANALYSIS
-print("\n" + "="*55 + "\n AI SURROGATE SENSITIVITY ANALYSIS \n" + "="*55)
-test_cutoffs, best_ai_u = [0.2, 0.4, 0.6, 0.8, 1.0], None
-for c in test_cutoffs:
-    u_test = ai_surrogate_model(u_exact, cutoff=c)
-    print(f"AI Cutoff {c:.1f}: Max Error = {jnp.max(jnp.abs(u_test - u_exact)):.2e}")
-    if c == 0.8: best_ai_u = u_test
-u_ai = best_ai_u
-
-# Errors
+u_ai = ai_surrogate_model(u_exact)
 err_fft, err_sem, err_hyb, err_fv, err_ai = jnp.abs(u_fft-u_exact), jnp.abs(u_sem-u_exact_sem), jnp.abs(u_hyb_fft-u_exact), jnp.abs(u_fv-u_exact), jnp.abs(u_ai-u_exact)
 
-# Final Reporting
-print_section = lambda n, e, t, d: print(f"[METHOD: {n}]\n  Error: {e:.2e} | Time: {t:.4f}s | DoF: {d:,}\n" + "-"*50)
-print_section("FFT", jnp.max(err_fft), t_fft, X_fft.size)
-print_section("SEM", jnp.max(err_sem), t_sem, X_sem.size)
-print_section("Hybrid", jnp.max(err_hyb), t_hyb, 5376)
+# --- REPORTING SECTION ---
+print("\n" + "="*55)
+print(f" SFX DCORE PERFORMANCE SUMMARY (t={total_time}s) ")
+print("="*55)
+def print_section(name, error, time, dof):
+    print(f"[METHOD: {name}]")
+    print(f"  Max Error       : {error:.2e}")
+    print(f"  Total Runtime   : {time:.4f} s")
+    print(f"  Allocated Nodes : {dof:,} DoF")
+    print("-" * 55)
+
+print_section("Pure 2D FFT", jnp.max(err_fft), t_fft, X_fft.size)
+print_section("Pure 2D SEM", jnp.max(err_sem), t_sem, X_sem.size)
+print_section("Hybrid Engine", jnp.max(err_hyb), t_hyb, 5376)
 print_section("FV Proxy", jnp.max(err_fv), t_fv, X_fft.size)
+print("="*55)
+
+# --- AI SENSITIVITY ANALYSIS ---
+print(" AI SURROGATE SENSITIVITY ANALYSIS ")
+for c in [0.2, 0.4, 0.6, 0.8, 1.0]:
+    u_t = ai_surrogate_model(u_exact, cutoff=c)
+    print(f"  Cutoff {c:.1f} | Error: {jnp.max(jnp.abs(u_t - u_exact)):.2e}")
 
 plot_sfx_dashboard(L, X_fft, u_exact, u_fft, X_sem, u_sem, u_exact_sem, u_hyb_fft, u_ai, u_fv, err_fft, err_sem, err_hyb, err_ai, err_fv, t_fft, t_sem, t_hyb, t_fv)
 sys.exit(0)
