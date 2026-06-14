@@ -4,6 +4,9 @@ import time
 import jax
 import jax.numpy as jnp
 import jax.lax
+
+import matplotlib
+matplotlib.use('Agg')  # Use the non-interactive backend
 import matplotlib.pyplot as plt
 
 # CRITICAL: Precision and Stability
@@ -117,4 +120,11 @@ print(f"Case 1 Total Allocated Grid Nodes : {X_fft.size:,} DoF")
 print(f"Case 2 Total Allocated Grid Nodes : {X_sem.size:,} DoF")
 print(f"Case 3 Total Allocated Grid Nodes : {u_hyb_fft.size + u_rib_bot.size + u_rib_top.size + u_rib_left.size + u_rib_right.size:,} DoF")
 print("="*55)
-plot_sfx_dashboard( L, X_fft, u_exact, u_fft, X_sem, u_sem, u_exact_sem, u_hyb_fft, err_fft, err_sem, err_hyb, t_fft, t_sem, t_hyb )
+
+# End of test_master_collision.py
+plot_sfx_dashboard(L, X_fft, u_exact, u_fft, X_sem, u_sem, u_exact_sem, 
+                   u_hyb_fft, err_fft, err_sem, err_hyb, t_fft, t_sem, t_hyb)
+
+# Final cleanup to prevent any lingering 'grab' issues
+plt.close('all')
+sys.exit(0)
