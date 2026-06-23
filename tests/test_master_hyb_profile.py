@@ -210,17 +210,16 @@ def step_fft(u, _):
 
     def rhs(q):
 
-        q_hat = jnp.fft.fft2(q)
-
-        dqdx = jnp.fft.ifft2(
-            q_hat * ik_x
-        ).real
-
-        dqdy = jnp.fft.ifft2(
-            q_hat * ik_y
-        ).real
-
-        return -(cx * dqdx + cy * dqdy)
+        return -(
+            cx
+            * jnp.fft.ifft2(
+                jnp.fft.fft2(q) * ik_x
+            ).real
+            + cy
+            * jnp.fft.ifft2(
+                jnp.fft.fft2(q) * ik_y
+            ).real
+        )
 
     return rk4_step(rhs, u, dt), None
 
