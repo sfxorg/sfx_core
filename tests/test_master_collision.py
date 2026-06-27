@@ -1,56 +1,45 @@
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import time
-
 import jax
+# Ensure CPU platform if needed:
+# jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", True)
-
 import jax.numpy as jnp
-
+import jax.lax
 import matplotlib
-matplotlib.use("Agg")
-
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from geometry.sem_nodes import get_sem_diff_matrix_2d
-from geometry.sem_grids import generate_tiled_sem_grid_2d
 from geometry.jacobians import sem_jacobian
-
-from operators.hybrid_ops import (
-    run_hybrid_sfx_2d_standard,
-    run_hybrid_sfx_2d_sinc,
-)
-
+from operators.fft_ops import fft_rhs
+from operators.hybrid_ops import run_hybrid_sfx_2d_standard, run_hybrid_sfx_2d_sinc
+from operators.fv_ops import fv_rhs_1st_order, fv_rhs_3rd_order
 from plots.diagnostics import plot_sfx_dashboard
-
 
 # ============================================================
 # TIMING UTILITIES
 # ============================================================
-
 def timed_run(name, fn):
-
     print(f"\nRunning {name}...")
-
     # compile + execute
     t0 = time.perf_counter()
     result = fn()
     jax.block_until_ready(result)
     compile_exec = time.perf_counter() - t0
-
+    
     # execute only
     t0 = time.perf_counter()
     result = fn()
     jax.block_until_ready(result)
     exec_only = time.perf_counter() - t0
-
+    
     print(
         f"{name:<20}"
         f" compile+run={compile_exec:.6f}s "
         f"run={exec_only:.6f}s"
     )
-
-    return result, compile_exec, exec_only
-
+    return result, exec_only
 
 # ============================================================
 # RK4
@@ -73,30 +62,18 @@ def rk4_step(rhs_func, u, dt):
 # ============================================================
 
 @jax.jit
-def run_fv_proxy(
-    u,
-    cx,
-    cy,
-    dt,
-    dx,
-    dy,
-):
+def step_fv(u, _):
 
-    flux_x = cx * u
-    flux_y = cy * u
+    def rhs(q):
+        return fv_rhs_3rd_order(
+            q,
+            cx,
+            cy,
+            dx,
+            dx,
+        )
 
-    d_flux_dx = (
-        flux_x
-        - jnp.roll(flux_x, 1, axis=0)
-    ) / dx
-
-    d_flux_dy = (
-        flux_y
-        - jnp.roll(flux_y, 1, axis=1)
-    ) / dy
-
-    return u - dt * (d_flux_dx + d_flux_dy)
-
+    return rk4_step(rhs, u, dt), None
 
 # ============================================================
 # GLOBAL CONFIG
@@ -107,14 +84,13 @@ L = 10.0
 cx = 1.0
 cy = 1.0
 
-dt = 0.05
+dt = 0.005
 total_time = 12.5
 
 steps = int(total_time / dt)
 
 N_fft = 256 #128 #64
 dx = L / N_fft
-
 
 # ============================================================
 # FFT GRID
@@ -153,41 +129,6 @@ u_init = jnp.exp(
     / 1.5
 )
 
-
-# ============================================================
-# SEM GRID
-# ============================================================
-
-E_sem = 32
-P_sem = 4
-
-X_sem, Y_sem = generate_tiled_sem_grid_2d(
-    E_sem,
-    P_sem,
-    L,
-)
-
-_, D_ref = get_sem_diff_matrix_2d(P_sem)
-
-D_sem_global = jnp.kron(
-    jnp.eye(E_sem),
-    D_ref,
-)
-
-jac_sem = sem_jacobian(
-    E_sem,
-    L,
-)
-
-u_init_sem = jnp.exp(
-    -(
-        (X_sem - 5) ** 2
-        + (Y_sem - 5) ** 2
-    )
-    / 1.5
-)
-
-
 # ============================================================
 # RIBBONS
 # ============================================================
@@ -200,56 +141,17 @@ P_rib_sinc = 1
 _, D_rib_sinc = get_sem_diff_matrix_2d(P_rib_sinc)
 jac_rib_sinc = sem_jacobian(16, L)
 
-
+# --- SIMULATIONS ---
 # ============================================================
 # FFT SOLVER
 # ============================================================
 
 @jax.jit
 def step_fft(u, _):
+    # Now uses the modular fft_rhs and your existing rk4_step
+    return rk4_step(lambda q: fft_rhs(q, ik_x, ik_y, cx, cy), u, dt), None
 
-    def rhs(q):
-
-        q_hat = jnp.fft.fft2(q)
-
-        dqdx = jnp.fft.ifft2(
-            q_hat * ik_x
-        ).real
-
-        dqdy = jnp.fft.ifft2(
-            q_hat * ik_y
-        ).real
-
-        return -(cx * dqdx + cy * dqdy)
-
-    return rk4_step(rhs, u, dt), None
-
-
-# ============================================================
-# SEM SOLVER
-# ============================================================
-
-@jax.jit
-def step_sem(u, _):
-
-    def rhs(q):
-
-        return -(
-            cx
-            * jnp.dot(
-                D_sem_global,
-                q,
-            )
-            * jac_sem
-            + cy
-            * jnp.dot(
-                q,
-                D_sem_global.T,
-            )
-            * jac_sem
-        )
-
-    return rk4_step(rhs, u, dt), None
+u_fft, t_fft = timed_run("PURE FFT", lambda: jax.lax.scan(step_fft, jnp.copy(u_init), None, length=steps)[0])
 
 
 # ============================================================
@@ -277,6 +179,9 @@ def step_hyb_std(state, _):
         None,
     )
 
+init_state_std = (jnp.copy(u_init), u_init[:P_rib_std+1,:], u_init[-P_rib_std-1:,:], u_init[:,:P_rib_std+1], u_init[:,-P_rib_std-1:])
+final_hyb_std, t_hyb_std = timed_run("HYBRID STD", lambda: jax.lax.scan(step_hyb_std, init_state_std, None, length=steps)[0])
+u_hyb_std = final_hyb_std[0]
 
 # ============================================================
 # HYBRID SINC
@@ -303,169 +208,52 @@ def step_hyb_sinc(state, _):
         None,
     )
 
+init_state_sinc = (jnp.copy(u_init), u_init[:P_rib_sinc+1,:], u_init[-P_rib_sinc-1:,:], u_init[:,:P_rib_sinc+1], u_init[:,-P_rib_sinc-1:])
+final_hyb_sinc, t_hyb_sinc = timed_run("HYBRID SINC", lambda: jax.lax.scan(step_hyb_sinc, init_state_sinc, None, length=steps)[0])
+u_hyb_sinc = final_hyb_sinc[0]
 
 # ============================================================
 # RUN BENCHMARKS
 # ============================================================
 
-u_fft, _, t_fft = timed_run(
-    "PURE FFT",
+u_fv, t_fv = timed_run(
+    "FV RK4",
     lambda: jax.lax.scan(
-        step_fft,
+        step_fv,
         jnp.copy(u_init),
         None,
         length=steps,
     )[0],
 )
 
-u_sem, _, t_sem = timed_run(
-    "PURE SEM",
-    lambda: jax.lax.scan(
-        step_sem,
-        jnp.copy(u_init_sem),
-        None,
-        length=steps,
-    )[0],
-)
-
-init_state_std = (
-    jnp.copy(u_init),
-    u_init[:P_rib_std + 1, :],
-    u_init[-P_rib_std - 1:, :],
-    u_init[:, :P_rib_std + 1],
-    u_init[:, -P_rib_std - 1:],
-)
-
-final_hyb_std, _, t_hyb_std = timed_run(
-    "HYBRID STD",
-    lambda: jax.lax.scan(
-        step_hyb_std,
-        init_state_std,
-        None,
-        length=steps,
-    )[0],
-)
-
-u_hyb_std = final_hyb_std[0]
-
-init_state_sinc = (
-    jnp.copy(u_init),
-    u_init[:P_rib_sinc + 1, :],
-    u_init[-P_rib_sinc - 1:, :],
-    u_init[:, :P_rib_sinc + 1],
-    u_init[:, -P_rib_sinc - 1:],
-)
-
-final_hyb_sinc, _, t_hyb_sinc = timed_run(
-    "HYBRID SINC",
-    lambda: jax.lax.scan(
-        step_hyb_sinc,
-        init_state_sinc,
-        None,
-        length=steps,
-    )[0],
-)
-
-u_hyb_sinc = final_hyb_sinc[0]
-
-u_fv, _, t_fv = timed_run(
-    "FV PROXY",
-    lambda: jax.lax.scan(
-        lambda u, _: (
-            run_fv_proxy(
-                u,
-                cx,
-                cy,
-                dt,
-                dx,
-                dx,
-            ),
-            None,
-        ),
-        jnp.copy(u_init),
-        None,
-        length=steps,
-    )[0],
-)
-
-# ============================================================
-# ERROR PROFILING
-# ============================================================
-
-t0 = time.perf_counter()
-
-u_exact = jnp.exp(
-    -(
-        (((X_fft - cx * total_time) % L) - 5) ** 2
-        + (((Y_fft - cy * total_time) % L) - 5) ** 2
-    )
-    / 1.5
-)
-
-u_exact_sem = jnp.exp(
-    -(
-        (((X_sem - cx * total_time) % L) - 5) ** 2
-        + (((Y_sem - cy * total_time) % L) - 5) ** 2
-    )
-    / 1.5
-)
+# Post-processing
+u_exact = jnp.exp(-(((X_fft - cx * total_time) % L - 5)**2 + ((Y_fft - cy * total_time) % L - 5)**2) / 1.5)
 
 err_fft = jnp.abs(u_fft - u_exact)
-err_sem = jnp.abs(u_sem - u_exact_sem)
 err_hyb_std = jnp.abs(u_hyb_std - u_exact)
 err_hyb_sinc = jnp.abs(u_hyb_sinc - u_exact)
 err_fv = jnp.abs(u_fv - u_exact)
 
-jax.block_until_ready(err_hyb_sinc)
+dof_fft = X_fft.size
+dof_hyb_std = dof_fft + (4 * N_fft * (P_rib_std + 1))
+dof_hyb_sinc = dof_fft + (4 * N_fft * (P_rib_sinc + 1))
 
-error_time = time.perf_counter() - t0
+# --- REPORTING SECTION ---
+print("\n" + "="*55)
+print(f" SFX DCORE PERFORMANCE SUMMARY (t={total_time}s) ")
+print("="*55)
 
+def print_section(name, error, time, dof):
+    print(f"[METHOD: {name}]")
+    print(f" Max Error     : {error:.2e}")
+    print(f" Total Runtime : {time:.4f} s")
+    print(f" Allocated DoF : {dof:,}")
+    print("-" * 55)
+    
+print_section("Pure 2D FFT", jnp.max(err_fft), t_fft, dof_fft)
+print_section(f"Hybrid Standard (P={P_rib_std})", jnp.max(err_hyb_std), t_hyb_std, dof_hyb_std)
+print_section(f"Hybrid Sinc (P={P_rib_sinc})", jnp.max(err_hyb_sinc), t_hyb_sinc, dof_hyb_sinc)
+print_section("FV Proxy", jnp.max(err_fv), t_fv, dof_fft)
+print("="*55)
 
-# ============================================================
-# REPORT
-# ============================================================
-
-print("\n")
-print("=" * 70)
-print("EXECUTION PROFILE")
-print("=" * 70)
-
-print(f"FFT          : {t_fft:.6f} s")
-print(f"SEM          : {t_sem:.6f} s")
-print(f"HYB STD      : {t_hyb_std:.6f} s")
-print(f"HYB SINC     : {t_hyb_sinc:.6f} s")
-print(f"FV           : {t_fv:.6f} s")
-
-print("-" * 70)
-
-print(f"Error Eval   : {error_time:.6f} s")
-
-print("-" * 70)
-
-print(
-    f"STD/FFT      : {t_hyb_std/t_fft:.2f}x"
-)
-
-print(
-    f"SINC/FFT     : {t_hyb_sinc/t_fft:.2f}x"
-)
-
-print(
-    f"SINC/STD     : {t_hyb_sinc/t_hyb_std:.2f}x"
-)
-
-print("-" * 70)
-
-print(
-    f"FFT step     : {1e3*t_fft/steps:.4f} ms"
-)
-
-print(
-    f"STD step     : {1e3*t_hyb_std/steps:.4f} ms"
-)
-
-print(
-    f"SINC step    : {1e3*t_hyb_sinc/steps:.4f} ms"
-)
-
-print("=" * 70)
+plot_sfx_dashboard(L, X_fft, u_init, u_exact, u_fft, u_hyb_std, u_hyb_sinc, u_fv, err_fft, err_hyb_std, err_hyb_sinc, err_fv, t_fft, t_hyb_std, t_hyb_sinc, t_fv)

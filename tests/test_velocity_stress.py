@@ -1,21 +1,15 @@
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import time
 import jax
 # Force CPU for environment stability
 jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", True)
-
 import jax.numpy as jnp
 import jax.lax
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
-from geometry.sem_nodes import get_sem_diff_matrix_2d
-from geometry.sem_grids import generate_tiled_sem_grid_2d
-from geometry.jacobians import sem_jacobian
 from operators.hybrid_ops import run_hybrid_sfx_2d_standard, run_hybrid_sfx_2d_sinc
 from plots.diagnostics import plot_sfx_dashboard
 
@@ -35,8 +29,8 @@ def rk4_step(rhs_func, u, dt):
     return u + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
 
 # Global Config
-L, dt = 10.0, 0.005 # Using smaller dt for high-velocity stability
-total_time = 2.0 
+L, dt = 10.0, 0.005
+total_time = 2.0
 steps = int(total_time / dt)
 N_fft, dx = 64, L/64
 
@@ -46,15 +40,9 @@ ik_x = 1j * 2 * jnp.pi * jnp.fft.fftfreq(N_fft, d=L/N_fft)[:, None]
 ik_y = 1j * 2 * jnp.pi * jnp.fft.fftfreq(N_fft, d=L/N_fft)[None, :]
 u_init = jnp.exp(-((X_fft - 2)**2 + (Y_fft - 2)**2) / 1.5)
 
-# SEM Setup
-E_sem, P_sem = 32, 4
-X_sem, Y_sem = generate_tiled_sem_grid_2d(E_sem, P_sem, L)
-_, D_ref = get_sem_diff_matrix_2d(P_sem)
-D_sem_global = jnp.kron(jnp.eye(E_sem), D_ref)
-jac_sem = sem_jacobian(E_sem, L)
-u_init_sem = jnp.exp(-((X_sem - 2)**2 + (Y_sem - 2)**2) / 1.5)
-
 # Hybrid Setup
+from geometry.sem_nodes import get_sem_diff_matrix_2d
+from geometry.jacobians import sem_jacobian
 P_rib_std, P_rib_sinc = 4, 1
 _, D_rib_std = get_sem_diff_matrix_2d(P_rib_std)
 _, D_rib_sinc = get_sem_diff_matrix_2d(P_rib_sinc)
@@ -68,7 +56,6 @@ print("-" * 55)
 
 for vel in velocities:
     cx, cy = vel, vel
-
     # 1. FFT
     t0 = time.time()
     @jax.jit
@@ -77,15 +64,7 @@ for vel in velocities:
     u_fft, _ = jax.lax.scan(step_fft, jnp.copy(u_init), None, length=steps)
     t_fft = time.time() - t0
 
-    # 2. SEM
-    t0 = time.time()
-    @jax.jit
-    def step_sem(u, _):
-        return rk4_step(lambda u: -(cx * jnp.dot(D_sem_global, u) * jac_sem + cy * jnp.dot(u, D_sem_global.T) * jac_sem), u, dt), None
-    u_sem, _ = jax.lax.scan(step_sem, jnp.copy(u_init_sem), None, length=steps)
-    t_sem = time.time() - t0
-
-    # 3. Hybrid Standard
+    # 2. Hybrid Standard
     t0 = time.time()
     @jax.jit
     def step_hyb_std(c, _):
@@ -94,7 +73,7 @@ for vel in velocities:
     u_hyb_std = final_hyb_std[0]
     t_hyb_std = time.time() - t0
 
-    # 4. Hybrid Sinc
+    # 3. Hybrid Sinc
     t0 = time.time()
     @jax.jit
     def step_hyb_sinc(c, _):
@@ -103,7 +82,7 @@ for vel in velocities:
     u_hyb_sinc = final_hyb_sinc[0]
     t_hyb_sinc = time.time() - t0
 
-    # 5. FV Proxy
+    # 4. FV Proxy
     t0 = time.time()
     @jax.jit
     def step_fv(u, _):
@@ -113,27 +92,20 @@ for vel in velocities:
 
     # Errors
     u_exact = jnp.exp(-((((X_fft - cx * total_time) % L) - 2)**2 + (((Y_fft - cy * total_time) % L) - 2)**2) / 1.5)
-    u_exact_sem = jnp.exp(-((((X_sem - cx * total_time) % L) - 2)**2 + (((Y_sem - cy * total_time) % L) - 2)**2) / 1.5)
     
     err_fft = jnp.max(jnp.abs(u_fft - u_exact))
-    err_sinc = jnp.max(jnp.abs(u_hyb_sinc - u_exact))
-    err_fv = jnp.max(jnp.abs(u_fv - u_exact))
-
-    print(f"{vel:<10.1f} | {err_fft:<12.2e} | {err_sinc:<12.2e} | {err_fv:<12.2e}")
-
-    # History for dashboard (using last velocity)
-    results_history = (u_init, u_exact, u_fft, u_sem, u_exact_sem, u_hyb_std, u_hyb_sinc, u_fv, 
-                       jnp.abs(u_fft - u_exact), jnp.abs(u_sem - u_exact_sem), jnp.abs(u_hyb_std - u_exact), 
-                       jnp.abs(u_hyb_sinc - u_exact), jnp.abs(u_fv - u_exact), t_fft, t_sem, t_hyb_std, t_hyb_sinc, t_fv)
+    err_hyb_std = jnp.abs(u_hyb_std - u_exact)
+    err_hyb_sinc = jnp.abs(u_hyb_sinc - u_exact)
+    err_fv = jnp.abs(u_fv - u_exact)
+    
+    print(f"{vel:<10.1f} | {err_fft:<12.2e} | {jnp.max(err_hyb_sinc):<12.2e} | {jnp.max(err_fv):<12.2e}")
 
 # --- PLOTTING ---
 plot_sfx_dashboard(
-    L, X_fft, results_history[0], results_history[1], results_history[2], 
-    X_sem, results_history[3], results_history[4], results_history[5], 
-    results_history[6], results_history[7], results_history[8], 
-    results_history[9], results_history[10], results_history[11], 
-    results_history[12], results_history[13], results_history[14], 
-    results_history[15], results_history[16], results_history[17]
+    L, X_fft, u_init, u_exact, u_fft, 
+    u_hyb_std, u_hyb_sinc, u_fv, 
+    jnp.abs(u_fft - u_exact), err_hyb_std, err_hyb_sinc, err_fv, 
+    t_fft, t_hyb_std, t_hyb_sinc, t_fv
 )
 
 print("\nSTRESS TEST COMPLETE. Dashboard saved.")

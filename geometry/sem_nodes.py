@@ -3,7 +3,12 @@ import jax.numpy as jnp
 def get_sem_diff_matrix_2d(P):
     """Computes exact analytical differentiation matrix for elements."""
     nodes = -jnp.cos(jnp.pi * jnp.arange(P + 1) / P)
-    c = jnp.ones(P + 1).at[:].set(2.0).at[-1].set(2.0)
+    #c = jnp.ones(P + 1).at[:].set(2.0).at[-1].set(2.0)
+
+    c = jnp.ones(P + 1)
+    c = c.at[0].set(2.0)
+    c = c.at[-1].set(2.0)
+    
     D = jnp.zeros((P + 1, P + 1))
 
     for i in range(P + 1):
