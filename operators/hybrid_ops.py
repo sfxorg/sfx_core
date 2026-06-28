@@ -19,6 +19,7 @@ def run_hybrid_sfx_2d_standard(
     cx,
     cy,
     dt,
+    dx
 ):
 
     penalty = 1.0 / dt
@@ -42,10 +43,10 @@ def run_hybrid_sfx_2d_standard(
 
             du_dx = jnp.dot(D_matrix, rib) * jac_sem
 
-            du_dy = jnp.fft.ifft(
-                jnp.fft.fft(rib, axis=1) * ik_y,
-                axis=1,
-            ).real
+            du_dy = (
+                jnp.roll(rib, -1, axis=1)
+                - jnp.roll(rib, 1, axis=1)
+            ) / (2.0 * dx)
 
             d_dt = -(cx * du_dx + cy * du_dy)
 
@@ -85,15 +86,15 @@ def run_hybrid_sfx_2d_standard(
 
         def update_vertical_spatial(rib, fft_boundary, side):
 
-            du_dx = jnp.fft.ifft(
-                jnp.fft.fft(rib, axis=0) * ik_x,
-                axis=0,
-            ).real
+            du_dx = (
+                jnp.roll(rib, -1, axis=0)
+                - jnp.roll(rib, 1, axis=0)
+            ) / (2.0 * dx)
 
             du_dy = jnp.dot(
                 rib,
                 D_matrix.T,
-            ) * jac_sem
+            ) * jac_sem            
 
             d_dt = -(cx * du_dx + cy * du_dy)
 
@@ -190,6 +191,7 @@ def run_hybrid_sfx_2d_sinc(
     cx,
     cy,
     dt,
+    dx
 ):
 
     penalty = 1.0 / dt
@@ -261,10 +263,10 @@ def run_hybrid_sfx_2d_sinc(
 
             du_dx = jnp.dot(D_matrix, rib) * jac_sem
 
-            du_dy = jnp.fft.ifft(
-                jnp.fft.fft(rib, axis=1) * ik_y,
-                axis=1,
-            ).real
+            du_dy = (
+                jnp.roll(rib, -1, axis=1)
+                - jnp.roll(rib, 1, axis=1)
+            ) / (2.0 * dx)
 
             d_dt = -(cx * du_dx + cy * du_dy)
 
@@ -319,10 +321,10 @@ def run_hybrid_sfx_2d_sinc(
             side,
         ):
 
-            du_dx = jnp.fft.ifft(
-                jnp.fft.fft(rib, axis=0) * ik_x,
-                axis=0,
-            ).real
+            du_dx = (
+                jnp.roll(rib, -1, axis=0)
+                - jnp.roll(rib, 1, axis=0)
+            ) / (2.0 * dx)
 
             du_dy = jnp.dot(
                 rib,
