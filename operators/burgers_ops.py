@@ -285,7 +285,7 @@ def burgers_hybrid_standard(
         # RHS FEEDBACK
         # =====================================================
 
-        alpha = 0.1
+        alpha = 0.5
 
         top_rhs_residual = (
             d_rib_top_dt[0:2, :]

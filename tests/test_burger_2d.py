@@ -68,13 +68,13 @@ def rk4_step(rhs, u, dt):
 
 L = 10.0
 
-N = 128
+N = 1024 #512 #256 #128
 
 dx = L / N
 
 dt = 1.0e-4
 
-total_time = 3.0 #0.5
+total_time = 0.5
 
 steps = int(total_time / dt)
 
@@ -128,7 +128,7 @@ u_init = jnp.exp(
 # SEM RIBBONS
 # ============================================================
 
-P = 4
+P = 8
 
 _, D_rib = get_sem_diff_matrix_2d(P)
 
@@ -391,3 +391,153 @@ print(
 print(
     "min =", float(jnp.min(u_hybrid))
 )
+
+# ============================================================
+# RIBBON / INTERFACE DIAGNOSTICS
+# ============================================================
+
+E_fft = jnp.mean(u_hybrid**2)
+
+E_rib_top   = jnp.mean(final_hybrid[1]**2)
+E_rib_bot   = jnp.mean(final_hybrid[2]**2)
+E_rib_left  = jnp.mean(final_hybrid[3]**2)
+E_rib_right = jnp.mean(final_hybrid[4]**2)
+
+E_rib_total = (
+    E_rib_top +
+    E_rib_bot +
+    E_rib_left +
+    E_rib_right
+)
+
+top_rms = jnp.sqrt(
+    jnp.mean(
+        (final_hybrid[1][0:2, :]
+         - u_hybrid[-2:, :])**2
+    )
+)
+
+bot_rms = jnp.sqrt(
+    jnp.mean(
+        (final_hybrid[2][-2:, :]
+         - u_hybrid[0:2, :])**2
+    )
+)
+
+left_rms = jnp.sqrt(
+    jnp.mean(
+        (final_hybrid[3][:, -2:]
+         - u_hybrid[:, 0:2])**2
+    )
+)
+
+right_rms = jnp.sqrt(
+    jnp.mean(
+        (final_hybrid[4][:, 0:2]
+         - u_hybrid[:, -2:])**2
+    )
+)
+
+print("\nRIBBON / INTERFACE DIAGNOSTICS")
+print("--------------------------------")
+print("FFT energy           =", float(E_fft))
+print("Ribbon energy total  =", float(E_rib_total))
+print(
+    "Ribbon/FFT (%)       =",
+    float(100.0 * E_rib_total / E_fft)
+)
+print("Top ribbon energy    =", float(E_rib_top))
+print("Bot ribbon energy    =", float(E_rib_bot))
+print("Left ribbon energy   =", float(E_rib_left))
+print("Right ribbon energy  =", float(E_rib_right))
+print("Top RMS mismatch     =", float(top_rms))
+print("Bot RMS mismatch     =", float(bot_rms))
+print("Left RMS mismatch    =", float(left_rms))
+print("Right RMS mismatch   =", float(right_rms))
+print(
+    "Ribbon max amplitude =",
+    float(
+        jnp.max(
+            jnp.abs(
+                jnp.concatenate([
+                    final_hybrid[1].ravel(),
+                    final_hybrid[2].ravel(),
+                    final_hybrid[3].ravel(),
+                    final_hybrid[4].ravel(),
+                ])
+            )
+        )
+    )
+)
+print(
+    "Ribbon/FFT max ratio =",
+    float(
+        jnp.max(
+            jnp.abs(
+                jnp.concatenate([
+                    final_hybrid[1].ravel(),
+                    final_hybrid[2].ravel(),
+                    final_hybrid[3].ravel(),
+                    final_hybrid[4].ravel(),
+                ])
+            )
+        )
+        /
+        jnp.max(jnp.abs(u_hybrid))
+    )
+)
+
+print()
+print("="*60)
+print("INTERFACE SPECTRAL COMPRESSIBILITY")
+print("="*60)
+
+def analyze_edge(name, edge_err):
+
+    signal = jnp.mean(edge_err, axis=0)
+
+    spec = jnp.fft.rfft(signal)
+
+    e = jnp.abs(spec)**2
+
+    e = e / (jnp.sum(e) + 1e-30)
+
+    cume = jnp.cumsum(e)
+
+    k95 = int(jnp.argmax(cume > 0.95))
+    k99 = int(jnp.argmax(cume > 0.99))
+
+    print()
+    print(name)
+    print("RMS       =", float(jnp.sqrt(jnp.mean(edge_err**2))))
+    print("Mode<=4   =", float(cume[min(4, len(cume)-1)]))
+    print("Mode<=8   =", float(cume[min(8, len(cume)-1)]))
+    print("Mode<=16  =", float(cume[min(16, len(cume)-1)]))
+    print("Mode<=32  =", float(cume[min(32, len(cume)-1)]))
+    print("95% mode  =", k95)
+    print("99% mode  =", k99)
+
+top_err = (
+    final_hybrid[1][0:2,:]
+    - u_hybrid[-2:,:]
+)
+
+bot_err = (
+    final_hybrid[2][-2:,:]
+    - u_hybrid[0:2,:]
+)
+
+left_err = (
+    final_hybrid[3][:,-2:]
+    - u_hybrid[:,0:2]
+)
+
+right_err = (
+    final_hybrid[4][:,0:2]
+    - u_hybrid[:,-2:]
+)
+
+analyze_edge("TOP", top_err)
+analyze_edge("BOTTOM", bot_err)
+analyze_edge("LEFT", left_err.T)
+analyze_edge("RIGHT", right_err.T)
