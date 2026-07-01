@@ -1,15 +1,63 @@
+# operators/fv_ops.py
+
 import jax
 import jax.numpy as jnp
 
+
 @jax.jit
-def run_fv_advection_step(u, flux_x, flux_y, dx, dy, dt):
-    """
-    Finite Volume Flux-Form Advection (MPAS-style proxy).
-    Uses a standard upwind or flux-limiter approach.
-    """
-    # 1D Flux-form transport operator (PPM-lite proxy)
-    # This represents the 'Finite Volume' philosophy
-    d_flux_dx = (flux_x[1:, :] - flux_x[:-1, :]) / dx
-    d_flux_dy = (flux_y[:, 1:] - flux_y[:, :-1]) / dy
-    
-    return u - dt * (d_flux_dx + d_flux_dy)
+def fv_rhs_1st_order(
+    u,
+    cx,
+    cy,
+    dx,
+    dy,
+):
+
+    d_flux_dx = (
+        u
+        - jnp.roll(u, 1, axis=0)
+    ) / dx
+
+    d_flux_dy = (
+        u
+        - jnp.roll(u, 1, axis=1)
+    ) / dy
+
+    return -(cx * d_flux_dx + cy * d_flux_dy)
+
+
+@jax.jit
+def fv_rhs_3rd_order(
+    u,
+    cx,
+    cy,
+    dx,
+    dy,
+):
+
+    uLx = (
+        -jnp.roll(u, -1, axis=0)
+        + 5.0*u
+        + 2.0*jnp.roll(u, 1, axis=0)
+    ) / 6.0
+
+    uLy = (
+        -jnp.roll(u, -1, axis=1)
+        + 5.0*u
+        + 2.0*jnp.roll(u, 1, axis=1)
+    ) / 6.0
+
+    Fx = cx * uLx
+    Fy = cy * uLy
+
+    dFdx = (
+        Fx
+        - jnp.roll(Fx, 1, axis=0)
+    ) / dx
+
+    dFdy = (
+        Fy
+        - jnp.roll(Fy, 1, axis=1)
+    ) / dy
+
+    return -(dFdx + dFdy)

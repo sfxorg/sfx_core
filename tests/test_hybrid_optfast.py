@@ -3,7 +3,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import time
 import jax
 # Ensure CPU platform if needed:
-jax.config.update("jax_platform_name", "cpu")
+#jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", False)
 import jax.numpy as jnp
 import jax.lax
@@ -15,6 +15,7 @@ from geometry.jacobians import sem_jacobian
 from operators.fft_ops import fft_rhs
 from operators.hybrid_ops import run_hybrid_sfx_2d_standard, run_hybrid_sfx_2d_sinc
 from operators.fv_ops import fv_rhs_1st_order, fv_rhs_3rd_order
+
 from plots.diagnostics import plot_sfx_dashboard
 
 # ============================================================
@@ -84,12 +85,12 @@ L = 10.0
 cx = 1.0
 cy = 1.0
 
-dt = 0.005
+dt = 0.0001
 total_time = 12.5
 
 steps = int(total_time / dt)
 
-N_fft = 256 #128 #64
+N_fft = 1024 #128 #64
 dx = L / N_fft
 
 # ============================================================
@@ -137,7 +138,7 @@ P_rib_std = 4
 _, D_rib_std = get_sem_diff_matrix_2d(P_rib_std)
 jac_rib_std = sem_jacobian(16, L)
 
-P_rib_sinc = 1
+P_rib_sinc = 4
 _, D_rib_sinc = get_sem_diff_matrix_2d(P_rib_sinc)
 jac_rib_sinc = sem_jacobian(16, L)
 
@@ -152,7 +153,6 @@ def step_fft(u, _):
     return rk4_step(lambda q: fft_rhs(q, ik_x, ik_y, cx, cy), u, dt), None
 
 u_fft, t_fft = timed_run("PURE FFT", lambda: jax.lax.scan(step_fft, jnp.copy(u_init), None, length=steps)[0])
-
 
 # ============================================================
 # HYBRID STANDARD
@@ -175,6 +175,7 @@ def step_hyb_std(state, _):
             cx,
             cy,
             dt,
+            dx
         ),
         None,
     )
@@ -204,6 +205,7 @@ def step_hyb_sinc(state, _):
             cx,
             cy,
             dt,
+            dx
         ),
         None,
     )
@@ -254,6 +256,7 @@ print_section("Pure 2D FFT", jnp.max(err_fft), t_fft, dof_fft)
 print_section(f"Hybrid Standard (P={P_rib_std})", jnp.max(err_hyb_std), t_hyb_std, dof_hyb_std)
 print_section(f"Hybrid Sinc (P={P_rib_sinc})", jnp.max(err_hyb_sinc), t_hyb_sinc, dof_hyb_sinc)
 print_section("FV Proxy", jnp.max(err_fv), t_fv, dof_fft)
+
 print("="*55)
 
 plot_sfx_dashboard(L, X_fft, u_init, u_exact, u_fft, u_hyb_std, u_hyb_sinc, u_fv, err_fft, err_hyb_std, err_hyb_sinc, err_fv, t_fft, t_hyb_std, t_hyb_sinc, t_fv)
