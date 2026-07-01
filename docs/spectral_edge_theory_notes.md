@@ -794,3 +794,282 @@ W ≈ wavelength
 rather than selecting interface sizes heuristically.
 
 This would represent an important step toward adaptive spectral interfaces and future Virtual Spectral Schur methods. 【1-5302ee】
+
+---
+
+# Scaling Law Validation Update
+
+## Status
+
+```text
+IN PROGRESS
+```
+
+The initial scaling experiment suggested:
+
+```text
+W* · k ≈ N
+```
+
+for several sinusoidal test cases.
+
+A larger validation study was subsequently performed using:
+
+```text
+N = 128
+N = 256
+N = 512
+```
+
+and
+
+```text
+k = 2
+4
+6
+8
+12
+16
+24
+32
+48
+64
+```
+
+to determine whether the observed relationship remained valid across multiple grid sizes and frequencies. 【1-8f1b9c】
+
+---
+
+# Initial Hypothesis
+
+The preliminary hypothesis was:
+
+```text
+W* ≈ N / k
+```
+
+or equivalently:
+
+```text
+W* ≈ λ / Δx
+```
+
+where:
+
+```text
+λ = wavelength
+Δx = grid spacing
+```
+
+This interpretation was motivated by earlier observations including:
+
+```text
+k = 16  →  W* = 16
+k = 32  →  W* = 8
+k = 64  →  W* = 4
+```
+
+for:
+
+```text
+N = 256
+```
+
+which satisfy:
+
+```text
+W* · k = 256
+```
+
+exactly. 【1-f33b4d】
+
+---
+
+# Expanded Validation Results
+
+Additional frequencies and grid sizes revealed more complicated behavior.
+
+Examples:
+
+```text
+N = 256
+
+k = 12  →  W* = 64
+
+k = 24  →  W* = 64
+```
+
+while:
+
+```text
+k = 16  →  W* = 16
+
+k = 32  →  W* = 8
+
+k = 64  →  W* = 4
+```
+
+continued to follow the original scaling relationship. 【1-8f1b9c】
+
+---
+
+# Power-Law Fitting
+
+A power-law model:
+
+```text
+W = C k^(-α)
+```
+
+was fitted independently for each grid.
+
+Estimated exponents:
+
+```text
+N = 128
+α ≈ 0.539
+```
+
+```text
+N = 256
+α ≈ -0.099
+```
+
+```text
+N = 512
+α ≈ -0.836
+```
+
+The fitted exponents are not consistent across grids. 【1-8f1b9c】
+
+---
+
+# Revised Assessment
+
+Current evidence is insufficient to support a universal scaling law of the form:
+
+```text
+W* ∝ 1/k
+```
+
+The observed behavior appears more complicated than originally expected. 【1-8f1b9c】
+
+---
+
+# Possible Explanation
+
+The current optimization criterion is:
+
+```text
+Choose (W,K)
+that minimizes error.
+```
+
+This may not be the most physically meaningful objective.
+
+Many configurations achieve:
+
+```text
+near machine-precision accuracy
+```
+
+simultaneously.
+
+As a result:
+
+```text
+multiple nearly equivalent minima
+```
+
+may exist in the width-rank landscape. 【1-8f1b9c】
+
+---
+
+# Alternative Selection Principle
+
+Future studies should consider:
+
+```text
+Choose smallest width
+subject to
+
+error < tolerance
+```
+
+for example:
+
+```text
+error < 1e-10
+```
+
+This would prioritize compression efficiency rather than absolute error minimization.
+
+---
+
+# Current Working Conclusion
+
+The original scaling hypothesis:
+
+```text
+W* · k ≈ N
+```
+
+remains an interesting observation for selected frequencies.
+
+However:
+
+```text
+the expanded validation study
+does not yet support it as a
+universal scaling law.
+```
+
+Additional investigation is required. 【1-8f1b9c】
+
+---
+
+# Scientific Value
+
+This negative result is important.
+
+The validation study demonstrates that:
+
+```text
+the apparent scaling law
+survived limited testing
+but did not generalize
+under broader conditions.
+```
+
+This eliminates an overly simplistic interpretation and helps refine future theoretical development. 【1-8f1b9c】
+
+---
+
+# Updated Status of Scaling Hypothesis
+
+| Hypothesis | Status |
+|------------|--------|
+| W* ≈ N/k | ⚠️ Not yet validated |
+| W* ≈ wavelength | ⚠️ Partially supported |
+| Width depends on signal structure | ✅ Supported |
+| Rank remains small | ✅ Supported |
+| Interface compression exists | ✅ Supported |
+
+---
+
+# Next Research Question
+
+Rather than asking:
+
+```text
+What width minimizes error?
+```
+
+future work should ask:
+
+```text
+What is the smallest width
+that achieves a target accuracy?
+```
+
+This may provide a more physically meaningful route toward adaptive spectral interfaces and future Virtual Spectral Schur methods.
