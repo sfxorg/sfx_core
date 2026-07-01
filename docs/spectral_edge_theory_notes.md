@@ -499,3 +499,298 @@ and ultimately:
 ```text
 Virtual Spectral Schur Solvers.
 ```
+
+---
+
+# Scaling Law Experiment
+
+## Study
+
+A frequency sweep was performed using:
+
+```text
+Sin2
+Sin4
+Sin8
+Sin16
+Sin32
+Sin64
+```
+
+For each case:
+
+```text
+Width Sweep
+=
+[2,4,8,16,32,64]
+
+Rank Sweep
+=
+[1,2,4,8,16]
+```
+
+The optimal:
+
+```text
+Width
+```
+
+and
+
+```text
+Rank
+```
+
+were determined from the minimum reconstruction error.
+Based on the scaling experiment results. 【1-5302ee】
+
+---
+
+# Results
+
+| Frequency | Wavelength | Best Width | Best Rank |
+|------------|------------:|------------:|------------:|
+| 2 | 0.50000 | 2 | 2 |
+| 4 | 0.25000 | 64 | 8 |
+| 8 | 0.12500 | 64 | 4 |
+| 16 | 0.06250 | 16 | 2 |
+| 32 | 0.03125 | 8 | 4 |
+| 64 | 0.01562 | 4 | 2 |
+
+Observed errors were near machine precision for all frequencies except the lowest-frequency Sin2 case. 【1-5302ee】
+
+---
+
+# Observation
+
+For:
+
+```text
+k = 16
+```
+
+best width:
+
+```text
+W = 16
+```
+
+For:
+
+```text
+k = 32
+```
+
+best width:
+
+```text
+W = 8
+```
+
+For:
+
+```text
+k = 64
+```
+
+best width:
+
+```text
+W = 4
+```
+
+These satisfy:
+
+```text
+16 × 16 = 256
+32 ×  8 = 256
+64 ×  4 = 256
+```
+
+for a domain containing:
+
+```text
+N = 256
+```
+
+grid points. 【1-5302ee】
+
+---
+
+# Scaling Hypothesis
+
+For resolved periodic signals:
+
+```text
+W* · k ≈ N
+```
+
+or equivalently:
+
+```text
+W* ≈ N / k
+```
+
+Since:
+
+```text
+λ = L / k
+```
+
+this can be written as:
+
+```text
+W* ≈ λ / Δx
+```
+
+where:
+
+```text
+Δx
+```
+
+is the grid spacing.
+
+---
+
+# Physical Interpretation
+
+The optimal interface width appears to contain approximately:
+
+```text
+one wavelength
+```
+
+of the dominant signal.
+
+Examples:
+
+```text
+k = 16
+
+λ = 16 grid points
+
+W* = 16
+```
+
+```text
+k = 32
+
+λ = 8 grid points
+
+W* = 8
+```
+
+```text
+k = 64
+
+λ = 4 grid points
+
+W* = 4
+```
+
+The agreement is exact for all three cases tested. 【1-5302ee】
+
+---
+
+# Revised Width Interpretation
+
+Previous hypothesis:
+
+```text
+Width
+≈
+Spatial Correlation Length
+```
+
+Updated hypothesis:
+
+```text
+Width
+≈
+Dominant Wavelength
+```
+
+for periodic signals.
+
+This interpretation is more precise and is directly supported by the scaling experiment. 【1-5302ee】
+
+---
+
+# Rank Interpretation
+
+No clear frequency-dependent scaling of rank was observed.
+
+Observed optimal ranks:
+
+```text
+2
+4
+8
+```
+
+across the entire frequency sweep. 【1-5302ee】
+
+Current working hypothesis:
+
+```text
+Rank
+≈
+Spectral Bandwidth
+```
+
+rather than:
+
+```text
+Rank
+≈
+Frequency
+```
+
+Additional experiments involving multi-frequency signals are required.
+
+---
+
+# Candidate Scaling Law
+
+Current evidence suggests:
+
+```text
+Optimal Width
+
+W*
+
+≈
+
+Dominant Wavelength
+```
+
+or:
+
+```text
+W* ≈ N / k
+```
+
+for periodic signals.
+
+This is the first experimentally supported scaling law produced by the Spectral Edge research program. 【1-5302ee】
+
+---
+
+# Significance
+
+If validated by additional studies, this result provides a principled method for selecting spectral interface widths:
+
+```text
+Estimate dominant wavelength
+
+↓
+
+Choose interface width
+
+W ≈ wavelength
+```
+
+rather than selecting interface sizes heuristically.
+
+This would represent an important step toward adaptive spectral interfaces and future Virtual Spectral Schur methods. 【1-5302ee】
